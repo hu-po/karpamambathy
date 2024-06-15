@@ -3,6 +3,7 @@ edu_fineweb10B/
 hellaswag/
 log/
 ARC-AGI/
+wandb/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

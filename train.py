@@ -10,6 +10,22 @@ from torch.nn import functional as F
 from mamba_ssm import Mamba2
 
 # -----------------------------------------------------------------------------
+import argparse
+import wandb
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--seed", type=int, default=1337, help="random seed")
+parser.add_argument("--hybrid_mode", action="store_true", help="hybrid arch")
+parser.add_argument("--max_steps", type=int, default=800, help="number of training steps")
+args = parser.parse_args()
+
+wandb.init(
+    project="karpamambathy",
+    entity="hug",
+    config=args,
+)
+
+# -----------------------------------------------------------------------------
 
 class CausalSelfAttention(nn.Module):
 
@@ -79,9 +95,10 @@ class GPTConfig:
     n_head: int = 4 # number of heads
     n_embd: int = 128 # embedding dimension
     # Mamba2 config
-    hybrid_mode: bool = True # use Mamba2 in hybrid mode
+    hybrid_mode: bool = args.hybrid_mode
     mamba_d_model: int = 128
     mamba_head_dim: int = 4
+    mamba_d_state: int = 64
 
 class GPT(nn.Module):
 
@@ -97,7 +114,7 @@ class GPT(nn.Module):
                 block_list.append(Mamba2(
                     # This module uses roughly 3 * expand * d_model^2 parameters
                     d_model=config.mamba_d_model, # Model dimension d_model
-                    d_state=64,  # SSM state expansion factor, typically 64 or 128
+                    d_state=config.mamba_d_state,  # SSM state expansion factor, typically 64 or 128
                     d_conv=4,    # Local convolution width
                     expand=2,    # Block expansion factor
                     headdim=config.mamba_head_dim, # https://github.com/state-spaces/mamba/issues/351
@@ -400,9 +417,9 @@ else:
 # added after video, pytorch can be serious about it's device vs. device_type distinction
 device_type = "cuda" if device.startswith("cuda") else "cpu"
 
-torch.manual_seed(1337)
+torch.manual_seed(args.seed)
 if torch.cuda.is_available():
-    torch.cuda.manual_seed(1337)
+    torch.cuda.manual_seed(args.seed)
 
 enc = tiktoken.get_encoding("gpt2")
 
@@ -447,7 +464,7 @@ raw_model = model.module if ddp else model # always contains the "raw" unwrapped
 max_lr = 6e-4
 min_lr = max_lr * 0.1
 warmup_steps = 715
-max_steps = 19073 # 19,073 steps is ~1 epoch, if data is 10B tokens and batch size 0.5M tokens
+max_steps = args.max_steps
 def get_lr(it):
     # 1) linear warmup for warmup_iters steps
     if it < warmup_steps:
@@ -494,6 +511,7 @@ for step in range(max_steps):
             dist.all_reduce(val_loss_accum, op=dist.ReduceOp.AVG)
         if master_process:
             print(f"validation loss: {val_loss_accum.item():.4f}")
+            wandb.log({"val_loss": val_loss_accum.item()})
             with open(log_file, "a") as f:
                 f.write(f"{step} val {val_loss_accum.item():.4f}\n")
             if step > 0 and (step % 5000 == 0 or last_step):
@@ -546,9 +564,18 @@ for step in range(max_steps):
     tokens_processed = B * T * grad_accum_steps * ddp_world_size
     tokens_per_sec = tokens_processed / dt
     if master_process:
+        wandb.log({
+            "train_loss": loss_accum.item(),
+            "lr": lr,
+            "norm": norm,
+            "tokens_per_sec": tokens_per_sec,
+            "dt": dt,
+        },
+        step=step)
         print(f"step {step:5d} | loss: {loss_accum.item():.6f} | lr {lr:.4e} | norm: {norm:.4f} | dt: {dt*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
         with open(log_file, "a") as f:
             f.write(f"{step} train {loss_accum.item():.6f}\n")
 
+wandb.finish()
 if ddp:
     destroy_process_group()
