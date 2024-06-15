@@ -34,3 +34,38 @@ python3 train.py
 
 ## Setup - Docker
 
+build the container
+
+```bash
+docker build -t karpamambathy -f Dockerfile .
+```
+
+sanity check
+
+```bash
+docker run -it --rm \
+    --gpus device=0 \
+    karpamambathy \
+    ./sanitycheck.sh
+```
+
+ensure train works
+
+```bash
+docker run -it --rm \
+    --gpus device=0 \
+    -v $(pwd):/src \
+    karpamambathy \
+    python3 train.py
+```
+
+ensure wandb
+
+```bash
+docker run -it --rm \
+    --gpus device=0 \
+    -v $(pwd):/src \
+    -e WANDB_API_KEY=$WANDB_API_KEY \
+    karpamambathy-practice \
+    wandb login && python3 test_wandb.py
+```
