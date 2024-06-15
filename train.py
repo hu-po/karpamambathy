@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from hellaswag import render_example, iterate_examples
 
-import mamba
+from mamba_ssm import Mamba2
 
 # -----------------------------------------------------------------------------
 
@@ -78,6 +78,7 @@ class GPTConfig:
     n_layer: int = 12 # number of layers
     n_head: int = 12 # number of heads
     n_embd: int = 768 # embedding dimension
+    mamba_d_model: int = 768 # Mamba2 d_model
 
 class GPT(nn.Module):
 
@@ -85,10 +86,22 @@ class GPT(nn.Module):
         super().__init__()
         self.config = config
 
+        block_list = []
+        for i in range(config.n_layer):
+            if i % 2 == 0:
+                block_list.append(Block(config))
+            else:
+                block_list.append(Mamba2(
+                    # This module uses roughly 3 * expand * d_model^2 parameters
+                    d_model=config.mamba_d_model, # Model dimension d_model
+                    d_state=64,  # SSM state expansion factor, typically 64 or 128
+                    d_conv=4,    # Local convolution width
+                    expand=2,    # Block expansion factor
+                ))
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
             wpe = nn.Embedding(config.block_size, config.n_embd),
-            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+            h = nn.ModuleList(block_list),
             ln_f = nn.LayerNorm(config.n_embd),
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
