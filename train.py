@@ -6,7 +6,6 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from hellaswag import render_example, iterate_examples
 
 from mamba_ssm import Mamba2
 
@@ -79,7 +78,10 @@ class GPTConfig:
     n_layer: int = 6 # number of layers
     n_head: int = 4 # number of heads
     n_embd: int = 128 # embedding dimension
-    mamba_d_model: int = 128 # Mamba2 d_model
+    # Mamba2 config
+    hybrid_mode: bool = True # use Mamba2 in hybrid mode
+    mamba_d_model: int = 128
+    mamba_head_dim: int = 4
 
 class GPT(nn.Module):
 
@@ -89,17 +91,17 @@ class GPT(nn.Module):
 
         block_list = []
         for i in range(config.n_layer):
-            block_list.append(Block(config))
-            # if i % 2 == 0:
-            #     block_list.append(Block(config))
-            # else:
-            #     block_list.append(Mamba2(
-            #         # This module uses roughly 3 * expand * d_model^2 parameters
-            #         d_model=config.mamba_d_model, # Model dimension d_model
-            #         d_state=64,  # SSM state expansion factor, typically 64 or 128
-            #         d_conv=4,    # Local convolution width
-            #         expand=2,    # Block expansion factor
-            #     ))
+            if not config.hybrid_mode or i % 2 == 0:
+                block_list.append(Block(config))
+            else:
+                block_list.append(Mamba2(
+                    # This module uses roughly 3 * expand * d_model^2 parameters
+                    d_model=config.mamba_d_model, # Model dimension d_model
+                    d_state=64,  # SSM state expansion factor, typically 64 or 128
+                    d_conv=4,    # Local convolution width
+                    expand=2,    # Block expansion factor
+                    headdim=config.mamba_head_dim, # https://github.com/state-spaces/mamba/issues/351
+                ))
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
             wpe = nn.Embedding(config.block_size, config.n_embd),
