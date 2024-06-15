@@ -73,12 +73,12 @@ class Block(nn.Module):
 
 @dataclass
 class GPTConfig:
-    block_size: int = 1024 # max sequence length
+    block_size: int = 4096 # max sequence length
     vocab_size: int = 50257 # number of tokens: 50,000 BPE merges + 256 bytes tokens + 1 <|endoftext|> token
-    n_layer: int = 12 # number of layers
-    n_head: int = 12 # number of heads
-    n_embd: int = 768 # embedding dimension
-    mamba_d_model: int = 768 # Mamba2 d_model
+    n_layer: int = 6 # number of layers
+    n_head: int = 4 # number of heads
+    n_embd: int = 128 # embedding dimension
+    mamba_d_model: int = 128 # Mamba2 d_model
 
 class GPT(nn.Module):
 
@@ -266,7 +266,53 @@ class DataLoaderLite:
             self.tokens = load_tokens(self.shards[self.current_shard])
             self.current_position = B * T * self.process_rank
         return x, y
+        
+# -----------------------------------------------------------------------------
+# dataloader for arc challenge
 
+import json
+import tiktoken
+import numpy as np
+from torch.utils.data import Dataset, DataLoader
+
+class ARCDataset(Dataset):
+    def __init__(self, data_dir):
+        self.data_dir = data_dir
+        self.data_files = []
+        for f in os.listdir(self.data_dir):
+            if f.endswith('.json'):
+                file_path = os.path.join(self.data_dir, f)
+                self.data_files.append(file_path)
+        self.data = self.load_data()
+
+    def load_data(self):
+        data = []
+        for file in self.data_files:
+            with open(file, 'r') as f:
+                task = json.load(f)
+                for demonstration in task['train']:
+                    demo_input = np.array(demonstration['input'])
+                    demo_output = np.array(demonstration['output'])
+                for test_case in task['test']:
+                    test_case_input = np.array(test_case['input'])
+                    test_case_output = np.array(test_case['output'])
+
+                x = np.hstack([
+                        demo_input.flatten(),
+                        demo_output.flatten(),
+                        test_case_input.flatten(),
+                ])
+                y = test_case_output.flatten()
+                data.append((x, y))
+        return data
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        return self.data[idx]
+
+    
 # -----------------------------------------------------------------------------
 # helper function for HellaSwag eval
 # takes tokens, mask, and logits, returns the index of the completion with the lowest loss
@@ -346,8 +392,15 @@ if master_process:
     print(f"total desired batch size: {total_batch_size}")
     print(f"=> calculated gradient accumulation steps: {grad_accum_steps}")
 
-train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="train")
-val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val")
+# train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="train")
+# val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val")
+
+train_dataset = ARCDataset(data_dir="ARC-AGI/data/training")
+val_dataset = ARCDataset(data_dir="ARC-AGI/data/evaluation")
+train_loader = DataLoader(train_dataset, batch_size=B, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=B, shuffle=False)
+train_loader = iter(train_loader)
+val_loader = iter(val_loader)
 
 torch.set_float32_matmul_precision('high')
 
@@ -396,12 +449,12 @@ for step in range(max_steps):
     # once in a while evaluate our validation loss
     if step % 250 == 0 or last_step:
         model.eval()
-        val_loader.reset()
+        # val_loader.reset()
         with torch.no_grad():
             val_loss_accum = 0.0
             val_loss_steps = 20
             for _ in range(val_loss_steps):
-                x, y = val_loader.next_batch()
+                x, y = next(val_loader)
                 x, y = x.to(device), y.to(device)
                 with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
                     logits, loss = model(x, y)
