@@ -69,3 +69,37 @@ docker run -it --rm \
     karpamambathy-practice \
     wandb login && python3 test_wandb.py
 ```
+
+## Ideas
+
+- [x] make public repo
+- [x] copy over environment setup
+- [x] sanity check
+- [x] replace GPT Blocks with Mamba2 Blocks (optimal amount of mamba blocks based on paper)
+- [x] change micro batch size for gpu
+- [x] hybrid model with transformer and mamba2 blocks?
+- [x] test locally and confirm working
+- [x] dataloader with https://github.com/fchollet/ARC-AGI
+- [x] shuffling dataloader
+- [ ] timing and gpu usage
+- [ ] wandb plotting and sweeping over hyperparams
+- [ ] check hyperparams with papers
+- [ ] bugfix for mamba on github issues
+- [ ] wandb for logging
+- [ ] sshed into other computer, running on docker
+- [ ] Gpt-4o versus gpt-4 on loss curves
+- [ ] Reversed, flipped examples as data augmentation
+- [ ] Looking through paper for sweep ideas
+- [ ] Pad as separate token
+- [ ] Weave in distillation from pretrained phi-3 mamba
+
+## References
+
+https://arxiv.org/pdf/2406.07887
+https://arxiv.org/pdf/2405.21060
+https://arxiv.org/pdf/1911.01547
+
+https://github.com/microsoft/Samba/
+https://github.com/karpathy/build-nanogpt
+https://github.com/state-spaces/mamba
+https://github.com/fchollet/ARC-AGI
