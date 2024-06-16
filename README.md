@@ -92,10 +92,10 @@ python3 sweep.py --seed=42
 - [x] wandb for logging
 - [x] wandb plotting and sweeping over hyperparams
 - [x] Gpt-4o versus gpt-4 on loss curves
-- [ ] check hyperparams with papers
-- [ ] Looking through paper for sweep ideas
-- [ ] Pad as separate token
-- [ ] Reversed, flipped examples as data augmentation
+- [x] check hyperparams with papers
+- [x] Looking through paper for sweep ideas
+- [x] Reversed, flipped examples as data augmentation
+- [x] Pad as separate token
 - [ ] sshed into other computer, running on docker
 - [ ] timing and gpu usage
 - [ ] Weave in distillation from pretrained phi-3 mamba

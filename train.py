@@ -101,7 +101,7 @@ class Block(nn.Module):
 class GPTConfig:
     block_size: int = 4096 # max sequence length
     # vocab_size: int = 50257 # number of tokens: 50,000 BPE merges + 256 bytes tokens + 1 <|endoftext|> token
-    vocab_size: int = 10
+    vocab_size: int = 12
     n_layer: int = args.n_layer # number of layers
     n_head: int = 4 # number of heads
     n_embd: int = args.att_n_embd # embedding dimension
@@ -293,10 +293,15 @@ class ARCDataset(Dataset):
                         test_case_input = np.flip(test_case_input, axis=0)
                         test_case_output = np.flip(test_case_output, axis=0)
                 x = np.hstack([
+                    np.array([11]), # separator token
                     demo_input.flatten(),
+                    np.array([11]), # separator token
                     demo_output.flatten(),
+                    np.array([11]), # separator token
                     test_case_input.flatten(),
+                    np.array([11]), # separator token
                     test_case_output.flatten(),
+                    np.array([11]), # separator token
                 ])
                 # shift by one for next token prediction
                 y = x[1:] + [0]
@@ -308,6 +313,8 @@ class ARCDataset(Dataset):
 
     def pad_sequence(self, sequence, max_length):
         padded_sequence = np.zeros(max_length, dtype=sequence.dtype)
+        # set padded to empty token
+        padded_sequence[:] = 10
         length = min(len(sequence), max_length)
         padded_sequence[:length] = sequence[:length]
         return padded_sequence
