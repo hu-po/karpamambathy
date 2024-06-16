@@ -98,8 +98,8 @@ def experiment(hparams) -> float:
             f"--n_layer={hparams['n_layer']}",
             f"--warmup_frac={hparams['warmup_frac']}",
             f"--max_lr={hparams['max_lr']}",
-            "--max_steps=2", # DEBUG
-            # f"--max_steps={hparams['max_steps']}",
+            # "--max_steps=2", # DEBUG
+            f"--max_steps={hparams['max_steps']}",
             f"--weight_decay={hparams['weight_decay']}",
             f"--grad_norm_clip={hparams['grad_norm_clip']}",
         ]
