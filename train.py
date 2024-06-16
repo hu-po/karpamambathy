@@ -14,9 +14,20 @@ import argparse
 import wandb
 
 parser = argparse.ArgumentParser()
+# computer specific (tuned for a specific GPU)
 parser.add_argument("--seed", type=int, default=1337, help="random seed")
-parser.add_argument("--hybrid_mode", action="store_true", help="hybrid arch")
-parser.add_argument("--max_steps", type=int, default=800, help="number of training steps")
+parser.add_argument("--micro_batch_size", type=int, default=8, help="micro batch size")
+# other
+parser.add_argument("--hybrid_mode", action="store_true", help="hybrid arch") # True, False
+parser.add_argument("--mamba_d_state", type=int, default=128, help="mamba d_state") # 8, 16, 64
+parser.add_argument("--att_n_embd", type=int, default=128, help="attention embedding size") # 64, 128
+parser.add_argument("--n_layer", type=int, default=12, help="number of layers") # 4, 6, 8
+parser.add_argument("--warmup_frac", type=float, default=0.1, help="fraction of steps for lr warmup") # 0.5, 0.1
+parser.add_argument("--max_lr", type=float, default=6e-4, help="max learning rate") # 6e-4, 1e-4, 1e-3
+parser.add_argument("--max_steps", type=int, default=800, help="number of training steps") # 256, 512, 1024
+parser.add_argument("--weight_decay", type=float, default=0.1, help="weight decay") # 0.1, 0.01, 0.001
+parser.add_argument("--grad_norm_clip", type=float, default=1.0, help="gradient norm clipping") # 1.0, 0.6, 2.0
+parser.add_argument("--data_aug", action="store_true", help="data augmentation") # True, False
 args = parser.parse_args()
 
 wandb.init(
@@ -91,14 +102,14 @@ class GPTConfig:
     block_size: int = 4096 # max sequence length
     # vocab_size: int = 50257 # number of tokens: 50,000 BPE merges + 256 bytes tokens + 1 <|endoftext|> token
     vocab_size: int = 10
-    n_layer: int = 6 # number of layers
+    n_layer: int = args.n_layer # number of layers
     n_head: int = 4 # number of heads
-    n_embd: int = 128 # embedding dimension
+    n_embd: int = args.att_n_embd # embedding dimension
     # Mamba2 config
     hybrid_mode: bool = args.hybrid_mode
     mamba_d_model: int = 128
     mamba_head_dim: int = 4
-    mamba_d_state: int = 64
+    mamba_d_state: int = args.mamba_d_state
 
 class GPT(nn.Module):
 
@@ -111,6 +122,7 @@ class GPT(nn.Module):
             if not config.hybrid_mode or i % 2 == 0:
                 block_list.append(Block(config))
             else:
+                # TODO: residual connection?
                 block_list.append(Mamba2(
                     # This module uses roughly 3 * expand * d_model^2 parameters
                     d_model=config.mamba_d_model, # Model dimension d_model
@@ -238,56 +250,6 @@ class GPT(nn.Module):
             print(f"using fused AdamW: {use_fused}")
         optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=(0.9, 0.95), eps=1e-8, fused=use_fused)
         return optimizer
-
-# -----------------------------------------------------------------------------
-import tiktoken
-import numpy as np
-
-def load_tokens(filename):
-    npt = np.load(filename)
-    npt = npt.astype(np.int32) # added after video
-    ptt = torch.tensor(npt, dtype=torch.long)
-    return ptt
-
-class DataLoaderLite:
-    def __init__(self, B, T, process_rank, num_processes, split):
-        self.B = B
-        self.T = T
-        self.process_rank = process_rank
-        self.num_processes = num_processes
-        assert split in {'train', 'val'}
-
-        # get the shard filenames
-        data_root = "edu_fineweb10B"
-        shards = os.listdir(data_root)
-        shards = [s for s in shards if split in s]
-        shards = sorted(shards)
-        shards = [os.path.join(data_root, s) for s in shards]
-        self.shards = shards
-        assert len(shards) > 0, f"no shards found for split {split}"
-        if master_process:
-            print(f"found {len(shards)} shards for split {split}")
-        self.reset()
-
-    def reset(self):
-        # state, init at shard zero
-        self.current_shard = 0
-        self.tokens = load_tokens(self.shards[self.current_shard])
-        self.current_position = self.B * self.T * self.process_rank
-
-    def next_batch(self):
-        B, T = self.B, self.T
-        buf = self.tokens[self.current_position : self.current_position+B*T+1]
-        x = (buf[:-1]).view(B, T) # inputs
-        y = (buf[1:]).view(B, T) # targets
-        # advance the position in the tensor
-        self.current_position += B * T * self.num_processes
-        # if loading the next batch would be out of bounds, advance to next shard
-        if self.current_position + (B * T * self.num_processes + 1) > len(self.tokens):
-            self.current_shard = (self.current_shard + 1) % len(self.shards)
-            self.tokens = load_tokens(self.shards[self.current_shard])
-            self.current_position = B * T * self.process_rank
-        return x, y
         
 # -----------------------------------------------------------------------------
 # dataloader for arc challenge
@@ -324,7 +286,12 @@ class ARCDataset(Dataset):
                 for test_case in task['test']:
                     test_case_input = np.array(test_case['input'])
                     test_case_output = np.array(test_case['output'])
-
+                if args.data_aug:
+                    if np.random.rand() < 0.5:
+                        demo_input = np.flip(demo_input, axis=0)
+                        demo_output = np.flip(demo_output, axis=0)
+                        test_case_input = np.flip(test_case_input, axis=0)
+                        test_case_output = np.flip(test_case_output, axis=0)
                 x = np.hstack([
                     demo_input.flatten(),
                     demo_output.flatten(),
@@ -431,7 +398,7 @@ val_dataset = ARCDataset(test_config)
 
 # total_batch_size = 524288 # 2**19, ~0.5M, in number of tokens
 total_batch_size = len(train_dataset) * train_config.max_sequence_len
-B = 2 # micro batch size
+B = args.micro_batch_size # micro batch size
 T = train_config.max_sequence_len # sequence length
 assert total_batch_size % (B * T * ddp_world_size) == 0, "make sure total_batch_size is divisible by B * T * ddp_world_size"
 grad_accum_steps = total_batch_size // (B * T * ddp_world_size)
@@ -461,10 +428,10 @@ if ddp:
     model = DDP(model, device_ids=[ddp_local_rank])
 raw_model = model.module if ddp else model # always contains the "raw" unwrapped model
 
-max_lr = 6e-4
+max_lr = args.max_lr
 min_lr = max_lr * 0.1
-warmup_steps = 715
 max_steps = args.max_steps
+warmup_steps = int(max_steps * args.warmup_frac)
 def get_lr(it):
     # 1) linear warmup for warmup_iters steps
     if it < warmup_steps:
@@ -479,7 +446,7 @@ def get_lr(it):
     return min_lr + coeff * (max_lr - min_lr)
 
 # optimize!
-optimizer = raw_model.configure_optimizers(weight_decay=0.1, learning_rate=6e-4, device_type=device_type)
+optimizer = raw_model.configure_optimizers(weight_decay=args.weight_decay, learning_rate=6e-4, device_type=device_type)
 
 # create the log directory we will write checkpoints to and log to
 log_dir = "log"
@@ -552,7 +519,7 @@ for step in range(max_steps):
         loss.backward()
     if ddp:
         dist.all_reduce(loss_accum, op=dist.ReduceOp.AVG)
-    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_norm_clip)
     # determine and set the learning rate for this iteration
     lr = get_lr(step)
     for param_group in optimizer.param_groups:

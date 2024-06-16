@@ -81,10 +81,10 @@ docker run -it --rm \
 - [x] test locally and confirm working
 - [x] dataloader with https://github.com/fchollet/ARC-AGI
 - [x] shuffling dataloader
-- [ ] bugfix for mamba on github issues
-- [ ] wandb for logging
-- [ ] wandb plotting and sweeping over hyperparams
-- [ ] Gpt-4o versus gpt-4 on loss curves
+- [x] bugfix for mamba on github issues
+- [x] wandb for logging
+- [x] wandb plotting and sweeping over hyperparams
+- [x] Gpt-4o versus gpt-4 on loss curves
 - [ ] check hyperparams with papers
 - [ ] Looking through paper for sweep ideas
 - [ ] Pad as separate token
