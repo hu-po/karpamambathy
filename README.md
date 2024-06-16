@@ -18,6 +18,7 @@ pip install packaging==24.1
 pip install causal-conv1d>=1.2.0
 cd mamba && pip install -e . && cd ..
 pip install wandb==0.17.1
+pip install hyperopt==0.2.7
 ```
 
 sanity check

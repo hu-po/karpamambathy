@@ -34,9 +34,11 @@ RUN pip install \
 # extras (old protobuf for wandb)
 RUN pip install \
     wandb==0.12.4 \
-    protobuf==3.20.1
+    protobuf==3.20.1 \
+    hyperopt==0.2.7
 RUN git clone https://github.com/state-spaces/mamba.git src/mamba
 RUN pip install --no-cache-dir src/mamba
+RUN mkdir /logs
 WORKDIR /src
 COPY . /src
 CMD ["python", "train.py"]
