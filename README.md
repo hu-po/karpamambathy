@@ -81,16 +81,16 @@ docker run -it --rm \
 - [x] test locally and confirm working
 - [x] dataloader with https://github.com/fchollet/ARC-AGI
 - [x] shuffling dataloader
-- [ ] timing and gpu usage
-- [ ] wandb plotting and sweeping over hyperparams
-- [ ] check hyperparams with papers
 - [ ] bugfix for mamba on github issues
 - [ ] wandb for logging
-- [ ] sshed into other computer, running on docker
+- [ ] wandb plotting and sweeping over hyperparams
 - [ ] Gpt-4o versus gpt-4 on loss curves
-- [ ] Reversed, flipped examples as data augmentation
+- [ ] check hyperparams with papers
 - [ ] Looking through paper for sweep ideas
 - [ ] Pad as separate token
+- [ ] Reversed, flipped examples as data augmentation
+- [ ] sshed into other computer, running on docker
+- [ ] timing and gpu usage
 - [ ] Weave in distillation from pretrained phi-3 mamba
 
 ## References
