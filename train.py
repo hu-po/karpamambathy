@@ -547,7 +547,7 @@ for step in range(max_steps):
 import yaml
 
 
-with open("/logs/results.yaml", "w") as f:
+with open("/log/results.yaml", "w") as f:
     yaml.dump({"val_loss": val_loss_accum.item()}, f)
 
 wandb.finish()

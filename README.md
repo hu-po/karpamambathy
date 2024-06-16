@@ -67,8 +67,14 @@ docker run -it --rm \
     --gpus device=0 \
     -v $(pwd):/src \
     -e WANDB_API_KEY=$WANDB_API_KEY \
-    karpamambathy-practice \
-    wandb login && python3 test_wandb.py
+    karpamambathy \
+    python3 test_wandb.py
+```
+
+# Sweeping
+
+```bash
+python3 sweep.py --seed=42
 ```
 
 ## Ideas

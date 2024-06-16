@@ -39,6 +39,7 @@ RUN pip install \
 RUN git clone https://github.com/state-spaces/mamba.git src/mamba
 RUN pip install --no-cache-dir src/mamba
 RUN mkdir /logs
+RUN git config --global --add safe.directory /src
 WORKDIR /src
 COPY . /src
 CMD ["python", "train.py"]

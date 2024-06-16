@@ -9,7 +9,9 @@ from hyperopt import fmin, hp, tpe
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=0)
-parser.add_argument('--batch', type=int, default=2)
+parser.add_argument('--batch', type=int, default=4)
+
+RESULTS_FILEPATH: str = "log/results.yaml"
 
 # Define the search space
 HYPERPARAMS = {
@@ -68,6 +70,9 @@ def experiment(hparams) -> float:
     print("\n\n Starting experiment \n\n")
     print(f"\n\nHyperparams:\n\n{pprint.pformat(hparams)}\n\n")
 
+
+    if os.path.exists(RESULTS_FILEPATH):
+        os.remove(RESULTS_FILEPATH)
     os.system("docker kill $(docker ps -aq) && docker rm $(docker ps -aq)")
     train_docker_proc = subprocess.Popen(
         [
@@ -76,13 +81,12 @@ def experiment(hparams) -> float:
             "--rm",
             "--gpus=all",
             "-v",
-            "$(pwd):/src",
+            f"{os.getcwd()}:/src",
             "-v",
-            "$(pwd)/logs:/logs",
+            f"{os.getcwd()}/log:/log",
             "-e",
-            "WANDB_API_KEY=$WANDB_API_KEY",
+            f"WANDB_API_KEY={os.environ['WANDB_API_KEY']}",
             "karpamambathy",
-            "wandb login && ",
             "python3",
             "train.py",
             f"--seed={args.seed}",
@@ -94,7 +98,8 @@ def experiment(hparams) -> float:
             f"--n_layer={hparams['n_layer']}",
             f"--warmup_frac={hparams['warmup_frac']}",
             f"--max_lr={hparams['max_lr']}",
-            f"--max_steps={hparams['max_steps']}",
+            "--max_steps=2", # DEBUG
+            # f"--max_steps={hparams['max_steps']}",
             f"--weight_decay={hparams['weight_decay']}",
             f"--grad_norm_clip={hparams['grad_norm_clip']}",
         ]
@@ -105,7 +110,7 @@ def experiment(hparams) -> float:
         val_loss = 10.0
     else:
         print("Training completed, success")
-        with open("logs/results.yaml", "r") as f:
+        with open(RESULTS_FILEPATH, "r") as f:
             results = yaml.safe_load(f)
         val_loss = results["val_loss"]
     print(f"\n\nVal loss: {val_loss}\n\n")
@@ -114,7 +119,7 @@ def experiment(hparams) -> float:
 if __name__ == "__main__":
     args = parser.parse_args()
     HYPERPARAMS['seed'] = args.seed
-    HYPERPARAMS['batch_size'] = args.batch_size
+    HYPERPARAMS['batch_size'] = args.batch
     best = fmin(
         experiment,
         space=HYPERPARAMS,
